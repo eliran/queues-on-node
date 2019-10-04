@@ -1,7 +1,7 @@
 {
-  "name": "node.typescript.template",
+  "name": "queues.on.node",
   "version": "0.0.1",
-  "description": "Base node typescript template",
+  "description": "Queues service in Postgres",
   "main": "dist/index.js",
   "scripts": {
     "start": "./node_modules/typescript/bin/tsc && node dist/index.js",
@@ -22,7 +22,7 @@
     ],
     "all": true
   },
-  "repository": "https://github.com/threeplay/Node.Queues",
+  "repository": "https://github.com/threeplay/queues.on.node",
   "author": "Eliran Ben Ezra",
   "license": "MIT",
   "engines": {
