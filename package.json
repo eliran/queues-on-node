@@ -1,0 +1,48 @@
+{
+  "name": "node.typescript.template",
+  "version": "0.0.1",
+  "description": "Base node typescript template",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "./node_modules/typescript/bin/tsc && node dist/index.js",
+    "lint": "./node_modules/tslint/bin/tslint --project .",
+    "cover": "./node_modules/nyc/bin/nyc.js ./node_modules/mocha/bin/mocha --opts ./mocha.opts",
+    "test": "./node_modules/mocha/bin/mocha  --opts ./mocha.opts",
+    "test-features": "./node_modules/cucumber/bin/cucumber-js features/**/*.feature --require-module ts-node/register --require-module tsconfig-paths/register --require features.steps/**/*.ts --format progress-bar"
+  },
+  "nyc": {
+    "extensions": [
+      ".ts"
+    ],
+    "exclude": [
+      "**/*.d.ts"
+    ],
+    "reporter": [
+      "html"
+    ],
+    "all": true
+  },
+  "repository": "https://github.com/threeplay/Node.Queues",
+  "author": "Eliran Ben Ezra",
+  "license": "MIT",
+  "engines": {
+    "node": "^10.6.0",
+    "yarn": "^1.17.3"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.3",
+    "@types/cucumber": "^4.0.7",
+    "@types/mocha": "^5.2.7",
+    "@types/sinon": "^7.5.0",
+    "chai": "^4.2.0",
+    "cucumber": "^5.1.0",
+    "mocha": "^6.2.1",
+    "nyc": "^14.1.1",
+    "sinon": "^7.5.0",
+    "ts-node": "^8.4.1",
+    "tsconfig-paths": "^3.9.0",
+    "tslint": "^5.20.0",
+    "typescript": "^3.6.3"
+  },
+  "dependencies": {}
+}
