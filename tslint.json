@@ -10,7 +10,12 @@
         "quotemark": [true, "single"],
         "indent": [true, "spaces", 4],
         "ordered-imports": false,
-        "interface-name": false
+        "interface-name": false,
+        "only-arrow-functions": false,
+        "max-classes-per-file": false,
+        "no-empty": false,
+        "no-unused-expression": false,
+        "no-empty-interface": false
     },
     "rulesDirectory": []
 }
