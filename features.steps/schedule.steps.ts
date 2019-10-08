@@ -1,75 +1,8 @@
 import { expect } from 'chai';
 import {After, Before, Given, Then, When} from 'cucumber';
 import * as Sinon from 'sinon';
-
-class Job {
-  public static make(): Job {
-    return new Job();
-  }
-
-  private executed = false;
-  private constructor() {}
-
-  get isExecuted(): boolean {
-    return this.executed;
-  }
-
-  public async execute(): Promise<void> {
-    this.executed = true;
-  }
-}
-
-interface ScheduleOptions {
-  job: Job;
-  after?: Date;
-}
-
-class Queue {
-  public static make(): Queue {
-    return new Queue();
-  }
-
-  private scheduled: ScheduleOptions[] = [];
-  private constructor() {
-    setInterval(this.processQueue.bind(this), 1000);
-  }
-
-  public schedule(options: ScheduleOptions) {
-    if (options.after) {
-      this.scheduled.push(options);
-    } else {
-      this.executeJob(options.job);
-    }
-  }
-
-  public cancel(job: Job) {
-    this.scheduled = this.scheduled.filter((options) => options.job !== job);
-  }
-
-  public isScheduled(job: Job): boolean {
-    for (const scheduledJob of this.scheduled) {
-      if (scheduledJob.job === job) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private executeJob(job: Job) {
-    job.execute().then(() => {}, () => {});
-  }
-
-  private processQueue() {
-    const now = new Date().getTime();
-    for (let i = this.scheduled.length - 1; i >= 0; i--) {
-      const options = this.scheduled[i];
-      if (!options.after || (now >= options.after.getTime())) {
-        this.scheduled.splice(i, 1);
-        this.executeJob(options.job);
-      }
-    }
-  }
-}
+import {Job} from '../src/job';
+import {Queue} from '../src/queue';
 
 Before(function() {
   this.fakeTimers = Sinon.useFakeTimers();
