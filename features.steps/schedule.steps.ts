@@ -1,19 +1,34 @@
 import { expect } from 'chai';
 import {After, Before, Given, Then, When} from 'cucumber';
 import * as Sinon from 'sinon';
-import {Job} from '../src/job';
+import {JobFactory, JobRegistry} from '../src/job';
 import {Queue} from '../src/queue';
+
+interface ScheduleWorld {
+  jobRegistry?: JobRegistry;
+  jobFactory?: JobFactory<{}>;
+  executedJobs: string[];
+}
 
 Before(function() {
   this.fakeTimers = Sinon.useFakeTimers();
+  const world = this as ScheduleWorld;
+  world.executedJobs = [];
+  world.jobRegistry = new JobRegistry();
+  world.jobFactory = world.jobRegistry.make('job', async (context: { name: string }) => {
+    world.executedJobs.push(name);
+  });
 });
 
 After(function() {
   this.fakeTimers.restore();
+  if (this.queue) {
+    this.queue.stop();
+  }
 });
 
 Given('I have a job', function() {
-  this.job = Job.make();
+  this.job = (this as ScheduleWorld).jobFactory.make({ name: 'job' });
 });
 
 Given('I have a queue', function() {

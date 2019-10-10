@@ -1,7 +1,8 @@
-import {Job} from '@app/job';
+import {Job} from '@app/job/job';
+import Timeout = NodeJS.Timeout;
 
 export interface ScheduleOptions {
-    job: Job;
+    job: Job<any>;
     after?: Date;
 }
 
@@ -11,8 +12,16 @@ export class Queue {
     }
 
     private scheduled: ScheduleOptions[] = [];
+    private timer: Timeout | null;
     private constructor() {
-        setInterval(this.processQueue.bind(this), 1000);
+        this.timer = setInterval(this.processQueue.bind(this), 1000);
+    }
+
+    public stop() {
+        if (this.timer !== null) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
     }
 
     public schedule(options: ScheduleOptions) {
@@ -23,7 +32,7 @@ export class Queue {
         }
     }
 
-    public cancel(job: Job) {
+    public cancel(job: Job<any>) {
         this.scheduled = this.scheduled.filter((options) => options.job !== job);
     }
 
@@ -36,7 +45,7 @@ export class Queue {
         return false;
     }
 
-    private executeJob(job: Job) {
+    private executeJob(job: Job<any>) {
         job.execute().then(() => {}, () => {});
     }
 
