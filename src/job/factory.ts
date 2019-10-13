@@ -1,6 +1,8 @@
 import {Job} from './job';
 import uuid from 'uuid';
 
+// Alternative names: JobHandler, JobManager, Job (changing current Job to be JobContext/JobParameters)
+//  JobEntity<Context> Making Job
 export class JobFactory<Context> {
     private makeJobId = () => uuid.v4();
 

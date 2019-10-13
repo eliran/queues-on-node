@@ -1,12 +1,13 @@
 import { expect } from 'chai';
 import {After, Before, Given, Then, When} from 'cucumber';
 import * as Sinon from 'sinon';
-import {JobFactory, JobRegistry} from '../src/job';
-import {Queue} from '../src/queue';
+import { JobManager } from 'src/job';
+import { makeQueueSchedulerService, QueuedJob, QueueSchedulerService } from 'src/queueSchedulerService';
 
 interface ScheduleWorld {
-  jobRegistry?: JobRegistry;
-  jobFactory?: JobFactory<{}>;
+  queueService: QueueSchedulerService;
+  jobManager: JobManager<{ name: string }>;
+  queueJob: QueuedJob;
   executedJobs: string[];
 }
 
@@ -14,41 +15,36 @@ Before(function() {
   this.fakeTimers = Sinon.useFakeTimers();
   const world = this as ScheduleWorld;
   world.executedJobs = [];
-  world.jobRegistry = new JobRegistry();
-  world.jobFactory = world.jobRegistry.make('job', async (context: { name: string }) => {
-    world.executedJobs.push(name);
-  });
+  world.queueService = makeQueueSchedulerService();
 });
 
 After(function() {
+  const world = this as ScheduleWorld;
   this.fakeTimers.restore();
-  if (this.queue) {
-    this.queue.stop();
-  }
+  // world.queueService.shutdown();
 });
 
 Given('I have a job', function() {
-  this.job = (this as ScheduleWorld).jobFactory.make({ name: 'job' });
+  const world = this as ScheduleWorld;
+  world.jobManager = world.queueService.registerJob({ name: 'job', handler: async (context: { name: string }) => {
+    world.executedJobs.push(context.name);
+  }});
 });
 
 Given('I have a queue', function() {
-  this.queue = Queue.make();
-});
-
-When('I schedule it on a queue', function() {
-  this.queue.schedule({ job: this.job });
+  this.queue = (this as ScheduleWorld).queueService.registerQueue({ name: 'queue' });
 });
 
 Then('the job should not execute', function() {
-  expect(this.job.isExecuted).to.be.false;
+  expect(this.queuedJob.isExecuted).to.be.false;
 });
 
 Then('the job should execute', function() {
-  expect(this.job.isExecuted).to.be.true;
+  expect(this.queuedJob.isExecuted).to.be.true;
 });
 
 Then('the job should be scheduled', function() {
-  expect(this.queue.isScheduled(this.job)).to.be.true;
+  expect(this.queuedJob.isScheduled(this.job)).to.be.true;
 });
 
 Then('the job should not be scheduled', function() {
@@ -63,8 +59,12 @@ When('{int} minutes elapsed', function(minutes) {
   this.fakeTimers.tick(minutes * 60 * 1000);
 });
 
-When('I schedule it on a queue in {int} hour', function(hours) {
-  this.queue.schedule({ job: this.job, after: relativeDate(hours * 60) });
+When('I schedule it on a queue', async function() {
+  this.queuedJob = await (this as ScheduleWorld).jobManager.schedule({ on: this.queue }, { name: 'my-job' });
+});
+
+When('I schedule it on a queue in {int} hour', async function(hours) {
+  this.queuedJob = await (this as ScheduleWorld).jobManager.schedule({ after: relativeDate(hours * 60), on: this.queue }, { name: 'my-job' });
 });
 
 When('I cancel the job', function() {
