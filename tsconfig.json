@@ -30,7 +30,8 @@
     "moduleResolution": "node",
     "baseUrl": "./",
     "paths": {
-      "@app/*": [ "src/*" ],
+      "@lib/*": [ "src/*" ],
+      "@backend/*": ["src/queue/backend/*"],
       "@steps/*": [ "features.steps/*" ]
     },                          
     // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */

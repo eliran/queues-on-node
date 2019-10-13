@@ -1,6 +1,6 @@
-import { Job } from '@app/job/job';
-import { Queue } from '@app/queue';
-import { QueuedJob } from '@app/queueSchedulerService';
+import { Job } from '@lib/job/job';
+import { Queue } from '@lib/queue';
+import { QueuedJob } from '@lib/queueSchedulerService';
 
 export interface JobManager<Context> {
   readonly name: string;

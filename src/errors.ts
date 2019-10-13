@@ -1,10 +1,10 @@
-export class QueueAlreadyExists extends Error {
+export class QueueAlreadyRegisteredError extends Error {
   constructor(queueName: string) {
-    super(`Queue '${queueName}' already exists`);
+    super(`Queue '${queueName}' already registered`);
   }
 }
 
-export class QueueNotRegistered extends Error {
+export class QueueNotRegisteredError extends Error {
   constructor(queueName: string) {
     super(`Queue '${queueName}' not registered`);
   }
@@ -13,5 +13,11 @@ export class QueueNotRegistered extends Error {
 export class UnknownJobError extends Error {
   constructor(jobName: string) {
     super(`Unknown job '${jobName}'`);
+  }
+}
+
+export class JobAlreadyRegisteredError extends Error {
+  constructor(jobName: string) {
+    super(`Job ${jobName} already registered`);
   }
 }

@@ -1,6 +1,5 @@
 import { expect } from 'chai';
-import { QueueAlreadyExists } from 'src/errors';
-import { JobAlreadyRegisteredError } from 'src/job';
+import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError } from 'src/errors';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
 
 describe('Queue Scheduler Service', function() {
@@ -55,7 +54,7 @@ describe('Queue Scheduler Service', function() {
         it('should throw if trying to register another queue with the same name', function() {
             sut.registerQueue({ name: 'queue' });
 
-            expect(() => sut.registerQueue({ name: 'queue' })).to.throw(QueueAlreadyExists);
+            expect(() => sut.registerQueue({ name: 'queue' })).to.throw(QueueAlreadyRegisteredError);
         });
 
     });
