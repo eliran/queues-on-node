@@ -9,3 +9,9 @@ export class QueueNotRegistered extends Error {
     super(`Queue '${queueName}' not registered`);
   }
 }
+
+export class UnknownJobError extends Error {
+  constructor(jobName: string) {
+    super(`Unknown job '${jobName}'`);
+  }
+}

@@ -48,7 +48,7 @@ describe('Queue Scheduler Service', function() {
         });
 
         it('should not allow registered queue object to be changed', function() {
-           expect(() => { sut.queues.some_queue = { name: 'some_queue' }; }).to.throw(TypeError);
+           expect(() => { sut.queues.some_queue = { name: 'some_queue', backend: 'dummy' }; }).to.throw(TypeError);
            expect(sut.queues).to.not.have.key('some_queue');
         });
 

@@ -12,6 +12,7 @@
         "ordered-imports": false,
         "interface-name": false,
         "class-name": true,
+        "array-type": false,
         "object-literal-sort-keys": false,
         "only-arrow-functions": false,
         "max-classes-per-file": false,

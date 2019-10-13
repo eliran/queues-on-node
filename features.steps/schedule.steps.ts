@@ -1,78 +1,136 @@
 import { expect } from 'chai';
-import {After, Before, Given, Then, When} from 'cucumber';
+import { after, before, binding, given, then, when } from 'cucumber-tsflow/dist';
+import { SinonFakeTimers } from 'sinon';
 import * as Sinon from 'sinon';
-import { JobManager } from 'src/job';
+import { Job, JobManager } from 'src/job';
+import { Queue } from 'src/queue';
 import { makeQueueSchedulerService, QueuedJob, QueueSchedulerService } from 'src/queueSchedulerService';
 
-interface ScheduleWorld {
-  queueService: QueueSchedulerService;
-  jobManager: JobManager<{ name: string }>;
-  queueJob: QueuedJob;
-  executedJobs: string[];
+class World {
+  public fakeTimers!: SinonFakeTimers;
+  public executedJobs: string[] = [];
+  public queueService!: QueueSchedulerService;
+  public jobManager!: JobManager<{ name: string }>;
+  public queue!: Queue;
+  public queuedJob!: QueuedJob;
+  public realSetTimeout!: typeof setTimeout;
 }
 
-Before(function() {
-  this.fakeTimers = Sinon.useFakeTimers();
-  const world = this as ScheduleWorld;
-  world.executedJobs = [];
-  world.queueService = makeQueueSchedulerService();
-});
+@binding([World])
+class Steps {
+  constructor(protected world: World) {
+  }
 
-After(function() {
-  const world = this as ScheduleWorld;
-  this.fakeTimers.restore();
-  // world.queueService.shutdown();
-});
+  @before()
+  public async setup() {
+    this.world.realSetTimeout = setTimeout;
+    this.world.fakeTimers = Sinon.useFakeTimers();
+    this.world.executedJobs = [];
+    this.world.queueService = makeQueueSchedulerService();
+    await this.world.queueService.start();
+  }
 
-Given('I have a job', function() {
-  const world = this as ScheduleWorld;
-  world.jobManager = world.queueService.registerJob({ name: 'job', handler: async (context: { name: string }) => {
-    world.executedJobs.push(context.name);
-  }});
-});
+  @after()
+  public async teardown() {
+    await this.world.queueService.shutdown();
+    this.world.fakeTimers.restore();
+  }
 
-Given('I have a queue', function() {
-  this.queue = (this as ScheduleWorld).queueService.registerQueue({ name: 'queue' });
-});
+  @given('I have a job')
+  public givenIHaveAJob(): void {
+    this.world.jobManager = this.world.queueService. registerJob({ name: 'job', handler: async (job: Job<{ name: string }>) => {
+      this.world.executedJobs.push(job.id);
+    }});
+  }
 
-Then('the job should not execute', function() {
-  expect(this.queuedJob.isExecuted).to.be.false;
-});
+  @given('I have a queue')
+  public givenIHaveAQueue(): void {
+    this.world.queue = this.world.queueService.registerQueue({ name: 'queue' });
+  }
 
-Then('the job should execute', function() {
-  expect(this.queuedJob.isExecuted).to.be.true;
-});
+  @when('{int} hour elapsed')
+  public whenHoursElapsed(hours: number) {
+    this.world.fakeTimers.tick(hours * 60 * 60 * 1000);
+  }
 
-Then('the job should be scheduled', function() {
-  expect(this.queuedJob.isScheduled(this.job)).to.be.true;
-});
+  @when('{int} minutes elapsed')
+  public whenMinutesElapsed(minutes: number) {
+    this.world.fakeTimers.tick(minutes * 60 * 1000);
+  }
 
-Then('the job should not be scheduled', function() {
-  expect(this.queue.isScheduled(this.job)).to.be.false;
-});
+  @when('I schedule it on a queue')
+  public async whenIScheduleItOnAQueue() {
+    this.world.queuedJob = await this.world.jobManager.schedule({ on: this.world.queue }, { name: 'my-job' });
+    this.world.fakeTimers.tick(1000);
+  }
 
-When('{int} hour elapsed', function(hours) {
-  this.fakeTimers.tick(hours * 60 * 60 * 1000);
-});
+  @when('I schedule it on a queue in {int} hour')
+  public async whenIScheduleItOnAQueueInHours(hours: number) {
+    this.world.queuedJob = await this.world.jobManager.schedule({ after: relativeDate(hours * 60), on: this.world.queue }, { name: 'my-job' });
+  }
 
-When('{int} minutes elapsed', function(minutes) {
-  this.fakeTimers.tick(minutes * 60 * 1000);
-});
+  @when('I cancel the job')
+  public async whenICancelTheJob() {
+    await this.world.queuedJob.cancel();
+  }
 
-When('I schedule it on a queue', async function() {
-  this.queuedJob = await (this as ScheduleWorld).jobManager.schedule({ on: this.queue }, { name: 'my-job' });
-});
+  @then('the job should not execute')
+  public async thenTheJobShouldNotExecute() {
+    expect(await this.isExecuted(this.world.queuedJob)).to.be.false;
+  }
 
-When('I schedule it on a queue in {int} hour', async function(hours) {
-  this.queuedJob = await (this as ScheduleWorld).jobManager.schedule({ after: relativeDate(hours * 60), on: this.queue }, { name: 'my-job' });
-});
+  @then('the job should execute')
+  public async thenTheJobShouldExecute() {
+    expect(await this.isExecuted(this.world.queuedJob)).to.be.true;
+  }
 
-When('I cancel the job', function() {
-  this.queue.cancel(this.job);
-});
+  @then('the job should be scheduled')
+  public async thenTheJobShouldBeScheduled() {
+    expect(await this.world.queuedJob.isScheduled()).to.be.true;
+  }
+
+  @then('the job should not be scheduled')
+  public async thenTheJobShouldNotBeScheduled() {
+    expect(await this.world.queuedJob.isScheduled()).to.be.false;
+  }
+
+  private async isExecuted(queuedJob: QueuedJob): Promise<boolean> {
+    return !!this.world.executedJobs.find((jobId) => jobId === queuedJob.id);
+  }
+
+  private async waitForExecute(): Promise<void> {
+    const executeCount = this.world.executedJobs.length;
+    await this.waitWithTimeout(2000, async () => this.world.executedJobs.length !== executeCount);
+  }
+
+  private async waitWithTimeout(timeout: number, check: () => Promise<boolean>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const checkStep = () => {
+        check().then((ok) => {
+          if (ok) {
+            resolve();
+          } else {
+            this.world.realSetTimeout(() => {
+              timeout -= 100;
+              if (timeout <= 0) {
+                resolve();
+              } else {
+                checkStep();
+              }
+            }, 100);
+          }
+        }).catch(reject);
+      };
+
+      checkStep();
+    });
+  }
+}
 
 function relativeDate(minutes: number): Date {
   const date = new Date();
   date.setTime(date.getTime() + minutes * 60 * 1000);
   return date;
 }
+
+export = Steps;

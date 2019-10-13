@@ -1,5 +1,5 @@
 export interface Job<Context> {
-    readonly name: string;
     readonly id: string;
+    readonly name: string;
     readonly context: Context;
 }

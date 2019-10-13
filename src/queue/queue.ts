@@ -1,82 +1,87 @@
 import { Job } from '@app/job/job';
-
-export interface ScheduleOptions {
-    job: Job<any>;
-    after?: Date;
-}
-
-// QueuedJob -> Job, Schedule, Processing information
-
-/*
-
-  - JobFactory => Job (immutable attributes)
-  - When scheduling the job on a queue it creates a QueuedJob
-  - The queue job is the one scheduled in the queue and eventaully executes
-
-
-  The queue can store a queuedJob and pull the next queue job to execute
-
-  To execute the job, the JobFactory holds the handler and the JobFactory is registered with the registry
-
-  QueueManager/Controller
-
-     Has a job registry can make a job factories for usage. All jobs created by the factories can
-      be scheduled in any queue the queue manager handles
-
-
-    const manager = QueueManager();
-
-
-    class MyQueues {
-      constructor(private manager: QueueManager) {}
-
-      const cron = this.manager.makeJobFactory('cron', ({ attributes }) => executeSomeThing)
-
-      const sync = this.manager.makeJobFactory('sync', () => )
-    }
-
-
-   queues = MyQueues()
-
-   queues.cron.make({ attributes })
-
-
-
-
-  We want a simple API for users:
-
-  A user should be able to register a job type and schedule it without worrying about queues
-  It should have the option to assign a job to a certain queue but jobs should default to a specific queue
-
-  The callers should use a single service to prepare everything although internally it could be split to different
-  parts.
-
-
-  interface QueueService {
-     registerJob(options: RegisterJobOptions, jobHandler: JobHandler<Context>): JobManager<Context>
-  }
-
-  interface JobFactory<Context> {
-     make(context: Context): Job
-     schedule(options: ScheduleJobOptions, context: Context): QueuedJob
-     later(context: Context): QueuedJob
-  }
-
-  interface Job {
-    schedule(options: ScheduleJobOptions): QueuedJob
-    later(): QueueJob
-  }
-
-
- const makeSomethingJobs = service.registerJob()
-
- makeSomethingJobs.make({}).later()
- makeSomethingJobs.later({})
-
- */
+import { QueuedJob } from '@app/queueSchedulerService';
+import { ancestorWhere } from 'tslint';
+import uuid from 'uuid';
+import Timeout = NodeJS.Timeout;
 
 export interface Queue {
-    readonly name: string;
+  readonly name: string;
+  readonly backend: string;
+}
+
+export interface QueueBackendScheduleOptions {
+  after?: Date;
+}
+
+export interface QueueBackendOptions {
+  executeHandler: (job: Job<unknown>) => Promise<void>;
+}
+
+export interface QueueBackend {
+  start: (options: QueueBackendOptions) => Promise<void>;
+  submit: (job: Job<unknown>, options: QueueBackendScheduleOptions) => Promise<string>;
+  isScheduled: (id: string) => Promise<boolean>;
+  cancel: (id: string) => Promise<void>;
+  shutdown: () => Promise<void>;
+}
+
+interface ScheduledJob {
+  id: string;
+  job: Job<unknown>;
+  after?: Date;
+}
+
+export class InMemoryQueueBackend implements QueueBackend {
+  private timer: Timeout | null = null;
+  private scheduledJobs: ScheduledJob[] = [];
+  private executeHandler: ((job: Job<unknown>) => Promise<void>) | null = null;
+
+  constructor(private rateInMs: number = 1000) {
+  }
+
+  public async start(options: QueueBackendOptions): Promise<void> {
+    if (this.timer) {
+      await this.shutdown();
+    }
+    this.executeHandler = options.executeHandler;
+    this.timer = setInterval(this.processQueue.bind(this), this.rateInMs);
+  }
+
+  public async shutdown(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+      this.executeHandler = null;
+    }
+  }
+
+  public async submit(job: Job<unknown>, options: QueueBackendScheduleOptions): Promise<string> {
+    const id = uuid.v4();
+    this.scheduledJobs.push({ id, job, after: options.after });
+    return id;
+  }
+
+  public async isScheduled(id: string): Promise<boolean> {
+    return !!await this.scheduledJobs.find((scheduledJob) => scheduledJob.id === id);
+  }
+
+  public async cancel(id: string): Promise<void> {
+    this.scheduledJobs = this.scheduledJobs.filter((scheduledJob) => scheduledJob.id !== id);
+  }
+
+  private async processQueue() {
+    const now = new Date().getTime();
+    for (let i = this.scheduledJobs.length - 1; i >= 0; i--) {
+      const options = this.scheduledJobs[i];
+      if (!options.after || (now >= options.after.getTime())) {
+        this.scheduledJobs.splice(i, 1);
+        if (this.executeHandler) {
+          await this.executeHandler(options.job);
+        }
+      }
+    }
+  }
+
 }
 
 // export class Queue {
@@ -122,14 +127,4 @@ export interface Queue {
 //         job.execute().then(() => {}, () => {});
 //     }
 //
-//     private processQueue() {
-//         const now = new Date().getTime();
-//         for (let i = this.scheduled.length - 1; i >= 0; i--) {
-//             const options = this.scheduled[i];
-//             if (!options.after || (now >= options.after.getTime())) {
-//                 this.scheduled.splice(i, 1);
-//                 this.executeJob(options.job);
-//             }
-//         }
-//     }
 // }
