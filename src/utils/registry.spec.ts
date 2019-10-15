@@ -30,31 +30,31 @@ describe('Registry', function() {
     expect(fn).to.not.been.called;
   });
 
-  it('.getNames should return all keys', function() {
+  it('#getNames should return all keys', function() {
     sut.register('a', () => '1');
     sut.register('b', () => '2');
 
     expect(sut.allNames()).to.have.members(['a', 'b']);
   });
 
-  it('.all should return a copy of all values', function() {
+  it('#all should return a copy of all values', function() {
     sut.register('a', () => '1');
     sut.register('b', () => '2');
 
     expect(sut.all()).to.eql({ a: '1', b: '2' });
   });
 
-  it('.get should return null if not found', function() {
+  it('#get should return null if not found', function() {
     expect(sut.get('a')).to.be.null;
   });
 
-  it('.get should return the value if found', function() {
+  it('#get should return the value if found', function() {
     sut.register('a', () => '1');
 
     expect(sut.get('a')).to.equal('1');
   });
 
-  it('.values should return all values', function() {
+  it('#values should return all values', function() {
     sut.register('a', () => '1');
     sut.register('b', () => '2');
     sut.register('c', () => '1');
