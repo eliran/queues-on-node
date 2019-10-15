@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import {} from 'chai-as-promised';
 import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, BackendNotRegisteredError } from 'src/errors';
+import { Job } from 'src/job';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
 
 describe('Queue Scheduler Service', function() {
@@ -74,7 +75,7 @@ describe('Queue Scheduler Service', function() {
     });
 
     describe('Jobs', function() {
-        const emptyJobHandler = async (context: {}) => {};
+        const emptyJobHandler = async (job: Job<{}>) => {};
 
         it('should be able to register new jobs', function() {
             const manager = sut.registerJob({ name: 'job', handler: emptyJobHandler });

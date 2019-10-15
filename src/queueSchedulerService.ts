@@ -1,7 +1,6 @@
 import { BackendAlreadyRegisteredError, BackendNotRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, QueueAlreadyRegisteredError, QueueNotRegisteredError, UnknownJobError } from '@lib/errors';
 import { Job, JobManager, JobScheduleOptions } from '@lib/job';
 import { Queue, QueueBackend } from '@lib/queue';
-import { Local } from '@backend/local';
 import { Registry } from '@lib/utils';
 
 export interface QueueSchedulerService {
