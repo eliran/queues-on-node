@@ -2,24 +2,18 @@ import { expect } from 'chai';
 import {} from 'chai-as-promised';
 import {} from 'sinon-chai';
 import * as Sinon from 'sinon';
-import { SinonFakeTimers, SinonStub } from 'sinon';
-import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, BackendNotRegisteredError, BackendAlreadyRegisteredError } from 'src/errors';
+import { SinonStub } from 'sinon';
+import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, BackendNotRegisteredError, BackendAlreadyRegisteredError, UnknownJobError } from 'src/errors';
 import { Job, JobManager } from 'src/job';
-import { QueueBackend } from 'src/queue';
+import { QueueBackend, QueueBackendOptions } from 'src/queue';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
 import { SinonStubMethods, stubType } from 'src/utils/autoSinonStub';
 
 describe('Queue Scheduler Service', function() {
-  let fakeTimers!: SinonFakeTimers;
   let sut!: QueueSchedulerService;
 
   beforeEach(function() {
-    fakeTimers = Sinon.useFakeTimers();
     sut = makeQueueSchedulerService();
-  });
-
-  afterEach(function() {
-    fakeTimers.restore();
   });
 
   it('should return a new instance for repeated make calls', function() {
@@ -89,6 +83,26 @@ describe('Queue Scheduler Service', function() {
 
         expect(queuedJob).to.include({ id: 'submit-1' });
         expect(mockBackend.submit).to.have.been.calledOnceWith({ context: {}, id: 'submit-1', name: 'job' }, { after: undefined });
+      });
+
+      it('should invoke the job handler when backend calls the execute handler passed on start', async function() {
+        mockBackend.start.resolves();
+        await sut.start();
+        const { executeHandler }: QueueBackendOptions = mockBackend.start.firstCall.args[0];
+
+        expect(stubHandler).to.not.have.been.called;
+        const job = { id: 'job1', name: 'job', context: {} };
+        executeHandler(job);
+
+        expect(stubHandler).to.have.been.calledOnceWith(job);
+      });
+
+      it('should throw if the job is not registered', async function() {
+        mockBackend.start.resolves();
+        await sut.start();
+        const { executeHandler }: QueueBackendOptions = mockBackend.start.firstCall.args[0];
+
+        await expect(executeHandler({ id: 'job1', name: 'unknown-job', context: {} })).to.eventually.be.rejectedWith(UnknownJobError);
       });
 
       it('should forward #isScheduled calls to backend', async function() {
@@ -199,11 +213,7 @@ describe('Queue Scheduler Service', function() {
       const otherQueueOnDifferentService = otherService.registerQueue({ name: 'other-queue' });
 
       expect(() => sut.registerJob({ name: 'job', defaultQueue: 'other-queue', handler: emptyJobHandler })).to.throw();
-      expect(() => sut.registerJob({
-        name: 'job',
-        defaultQueue: otherQueueOnDifferentService,
-        handler: emptyJobHandler
-      })).to.throw();
+      expect(() => sut.registerJob({ name: 'job', defaultQueue: otherQueueOnDifferentService, handler: emptyJobHandler })).to.throw();
     });
   });
 });
