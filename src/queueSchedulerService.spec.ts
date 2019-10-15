@@ -7,7 +7,7 @@ import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBacken
 import { Job, JobManager } from 'src/job';
 import { QueueBackend, QueueBackendOptions } from 'src/queue';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
-import { SinonStubMethods, stubType } from 'src/utils/autoSinonStub';
+import { sinonTypeProxy } from 'src/utils/sinonTypeProxy';
 
 describe('Queue Scheduler Service', function() {
   let sut!: QueueSchedulerService;
@@ -29,16 +29,16 @@ describe('Queue Scheduler Service', function() {
   });
 
   describe('Queue backend', function() {
-    let mockBackend!: SinonStubMethods<QueueBackend>;
+    let mockBackend!: Sinon.SinonStubbedInstance<QueueBackend>;
 
     beforeEach(function() {
-      mockBackend = stubType();
+      mockBackend = sinonTypeProxy();
       sut.registerBackend({ name: 'test', backend: mockBackend });
       sut.registerQueue({ name: 'test', backend: 'test' });
     });
 
     it('should throw if trying to register a backend with the same name', async function() {
-       expect(() => sut.registerBackend({ name: 'test', backend: stubType() })).to.throw(BackendAlreadyRegisteredError);
+       expect(() => sut.registerBackend({ name: 'test', backend: sinonTypeProxy() })).to.throw(BackendAlreadyRegisteredError);
     });
 
     it('should throw if queue backend isn\'t registered', async function() {
