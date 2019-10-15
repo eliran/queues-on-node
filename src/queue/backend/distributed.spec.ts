@@ -1,9 +1,8 @@
+import { expect, sinonTypeProxy } from '@test';
 import { SinonFakeTimers } from 'sinon';
 import * as Sinon from 'sinon';
-import { expect } from '@lib/utils/testSupport';
 import { DistributedQueueBackend, DistributedQueueBackendAccessor } from 'src/queue/backend/distributed';
 import { QueueBackendOptions } from 'src/queue/queue';
-import { sinonTypeProxy } from 'src/utils/sinonTypeProxy';
 
 describe('Distributed backend', function() {
   let fakeTimers!: SinonFakeTimers;

@@ -1,11 +1,9 @@
-import { expect } from 'chai';
+import { expect } from '@test';
 import { SinonFakeTimers, SinonStub } from 'sinon';
 import * as Sinon from 'sinon';
-import {} from 'sinon-chai';
 import { Job } from 'src/job';
 
 import { Local } from 'src/queue/backend/local';
-import { ancestorWhere } from 'tslint';
 
 describe('Local backend', function() {
   let sut!: Local;

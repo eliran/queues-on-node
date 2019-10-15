@@ -1,13 +1,10 @@
-import { expect } from 'chai';
-import {} from 'chai-as-promised';
-import {} from 'sinon-chai';
+import { expect, sinonTypeProxy } from '@test';
 import * as Sinon from 'sinon';
 import { SinonStub } from 'sinon';
 import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, BackendNotRegisteredError, BackendAlreadyRegisteredError, UnknownJobError } from 'src/errors';
 import { Job, JobManager } from 'src/job';
 import { QueueBackend, QueueBackendOptions } from 'src/queue';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
-import { sinonTypeProxy } from 'src/utils/sinonTypeProxy';
 
 describe('Queue Scheduler Service', function() {
   let sut!: QueueSchedulerService;
