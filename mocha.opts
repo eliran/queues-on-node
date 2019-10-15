@@ -1,5 +1,6 @@
 -r ts-node/register/type-check
 -r source-map-support/register
 -r tsconfig-paths/register
+--timeout 5000
 --file mocha-common.ts
 src/**/*.spec.ts

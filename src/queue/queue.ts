@@ -14,9 +14,9 @@ export interface QueueBackendOptions {
 }
 
 export interface QueueBackend {
-  start: (options: QueueBackendOptions) => Promise<void>;
-  submit: (job: Job<unknown>, options: QueueBackendScheduleOptions) => Promise<string>;
-  isScheduled: (id: string) => Promise<boolean>;
-  cancel: (id: string) => Promise<void>;
-  shutdown: () => Promise<void>;
+  start(options: QueueBackendOptions): Promise<void>;
+  submit(job: Job<unknown>, options: QueueBackendScheduleOptions): Promise<string>;
+  isScheduled(id: string): Promise<boolean>;
+  cancel(id: string): Promise<void>;
+  shutdown(): Promise<void>;
 }
