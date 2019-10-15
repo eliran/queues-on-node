@@ -21,3 +21,21 @@ export class JobAlreadyRegisteredError extends Error {
     super(`Job ${jobName} already registered`);
   }
 }
+
+export class BackendAlreadyRegisteredError extends Error {
+  constructor(backendName: string) {
+    super(`Backend ${backendName} already registered`);
+  }
+}
+
+export class BackendNotRegisteredError extends Error {
+  constructor(backendName: string) {
+    super (`Backend ${backendName} is not registered`);
+  }
+}
+
+export class NoDefaultBackendError extends Error {
+  constructor() {
+    super ('Service doesn\'t have a default backend');
+  }
+}

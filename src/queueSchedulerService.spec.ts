@@ -1,5 +1,6 @@
 import { expect } from 'chai';
-import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError } from 'src/errors';
+import {} from 'chai-as-promised';
+import { QueueAlreadyRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, BackendNotRegisteredError } from 'src/errors';
 import { makeQueueSchedulerService, QueueSchedulerService } from 'src/queueSchedulerService';
 
 describe('Queue Scheduler Service', function() {
@@ -15,18 +16,31 @@ describe('Queue Scheduler Service', function() {
         expect(sut).to.not.equal(second);
     });
 
+    it('should throw if scheduling on a queue with no backend and no default backend', async function() {
+        const manager = sut.registerJob({ name: 'job', handler: async (context: {}) => {} });
+
+        return expect(manager.schedule({}, {})).to.eventually.be.rejectedWith(NoDefaultBackendError);
+    });
+
+    it('should throw if queue backend isn\'t registered', async function() {
+        sut.registerQueue({ name: 'my-queue', backend: 'custom' });
+        const manager = sut.registerJob({ name: 'job', defaultQueue: 'my-queue', handler: async (context: {}) => {} });
+
+        return expect(manager.schedule({}, {})).to.eventually.be.rejectedWith(BackendNotRegisteredError);
+    });
+
     describe('Queues', function() {
         it('should have a default queue', function() {
             expect(sut.defaultQueue).to.be.ok;
             expect(sut.defaultQueue.name).to.equal('general');
-            expect(sut.queues).to.have.key('general');
+            expect(sut.registeredQueues).to.have.key('general');
         });
 
         it('should be able to create a default queue with a custom name', function() {
             const service = makeQueueSchedulerService({ defaultQueueOptions: { name: 'default' }});
 
             expect(service.defaultQueue.name).to.equal('default');
-            expect(service.queues).to.have.key('default');
+            expect(service.registeredQueues).to.have.key('default');
         });
 
         it('should be able to register a queue', function() {
@@ -34,21 +48,21 @@ describe('Queue Scheduler Service', function() {
 
             expect(queue).to.be.ok;
             expect(queue.name).to.equal('my-queue');
-            expect(sut.queues['my-queue']).to.equal(queue);
+            expect(sut.registeredQueues['my-queue']).to.equal(queue);
         });
 
         it('should return all registered queues in under `queues` object', function() {
             const firstQueue = sut.registerQueue({ name: 'first_queue' });
             const secondQueue = sut.registerQueue({ name: 'second_queue' });
 
-            expect(sut.queues).to.include.keys('first_queue', 'second_queue');
-            expect(sut.queues.first_queue).to.equal(firstQueue);
-            expect(sut.queues.second_queue).to.equal(secondQueue);
+            expect(sut.registeredQueues).to.include.keys('first_queue', 'second_queue');
+            expect(sut.registeredQueues.first_queue).to.equal(firstQueue);
+            expect(sut.registeredQueues.second_queue).to.equal(secondQueue);
         });
 
         it('should not allow registered queue object to be changed', function() {
-           expect(() => { sut.queues.some_queue = { name: 'some_queue', backend: 'dummy' }; }).to.throw(TypeError);
-           expect(sut.queues).to.not.have.key('some_queue');
+           expect(() => { sut.registeredQueues.some_queue = { name: 'some_queue', backend: 'dummy' }; }).to.throw(TypeError);
+           expect(sut.registeredQueues).to.not.have.key('some_queue');
         });
 
         it('should throw if trying to register another queue with the same name', function() {
@@ -67,7 +81,7 @@ describe('Queue Scheduler Service', function() {
 
             expect(manager).to.be.ok;
             expect(manager.name).to.equal('job');
-            expect(sut.jobs).to.have.members(['job']);
+            expect(sut.registeredJobs).to.have.members(['job']);
         });
 
         it('should throw if trying to register jobs with same name', function() {

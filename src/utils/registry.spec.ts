@@ -53,4 +53,12 @@ describe('Registry', function() {
 
     expect(sut.get('a')).to.equal('1');
   });
+
+  it('.values should return all values', function() {
+    sut.register('a', () => '1');
+    sut.register('b', () => '2');
+    sut.register('c', () => '1');
+
+    expect(sut.values()).to.have.eql(['1', '2', '1']);
+  });
 });

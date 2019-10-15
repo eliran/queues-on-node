@@ -1,4 +1,4 @@
-import { JobAlreadyRegisteredError, QueueAlreadyRegisteredError, QueueNotRegisteredError, UnknownJobError } from '@lib/errors';
+import { BackendAlreadyRegisteredError, BackendNotRegisteredError, JobAlreadyRegisteredError, NoDefaultBackendError, QueueAlreadyRegisteredError, QueueNotRegisteredError, UnknownJobError } from '@lib/errors';
 import { Job, JobManager, JobScheduleOptions } from '@lib/job';
 import { Queue, QueueBackend } from '@lib/queue';
 import { Local } from '@backend/local';
@@ -6,12 +6,14 @@ import { Registry } from '@lib/utils';
 
 export interface QueueSchedulerService {
   readonly defaultQueue: Queue;
-  readonly queues: { [name: string]: Queue };
-  readonly jobs: string[];
+  readonly registeredQueues: { [name: string]: Queue };
+  readonly registeredJobs: string[];
 
   start(): Promise<void>;
 
   shutdown(): Promise<void>;
+
+  registerBackend(options: RegisterBackendOptions): QueueBackend;
 
   registerQueue(options: RegisterQueueOptions): Queue;
 
@@ -30,9 +32,16 @@ export interface RegisterJobOptions<Context> {
 
 /**
  * @param name The queue's unique name
+ * @param backend optional backend this queue runs on
  */
 export interface RegisterQueueOptions {
   name: string;
+  backend?: string;
+}
+
+export interface RegisterBackendOptions {
+  name: string;
+  backend: QueueBackend;
 }
 
 export type JobHandler<Context> = (job: Job<Context>) => Promise<void>;
@@ -54,9 +63,10 @@ export function makeQueueSchedulerService(options: QueueSchedulerOptions = {}): 
 }
 
 class QueueSchedulerServiceImp implements QueueSchedulerService {
-  private queueRegistry = new Registry<Queue>();
-  private backend: QueueBackend = new Local();
-  private jobRegistry = new Registry<JobManager<any>>();
+  private queues = new Registry<Queue>();
+  private jobs = new Registry<JobManager<any>>();
+  private backends = new Registry<QueueBackend>();
+  private defaultBackend: string | null = null;
 
   public readonly defaultQueue: Queue;
 
@@ -64,28 +74,43 @@ class QueueSchedulerServiceImp implements QueueSchedulerService {
     this.defaultQueue = this.registerQueue(options.defaultQueueOptions || { name: 'general' });
   }
 
-  public shutdown(): Promise<void> {
-    return this.backend.shutdown();
+  public async shutdown(): Promise<void> {
+    for (const backend of this.backends.values()) {
+      await backend.shutdown();
+    }
   }
 
-  public start(): Promise<void> {
-    return this.backend.start({ executeHandler: this.executeJob.bind(this) });
+  public async start(): Promise<void> {
+    for (const backend of this.backends.values()) {
+      await backend.start({ executeHandler: this.executeJob.bind(this) });
+    }
   }
 
-  get queues(): { [name: string]: Queue } {
-    return this.queueRegistry.all();
+  get registeredQueues(): { [name: string]: Queue } {
+    return this.queues.all();
   }
 
-  get jobs(): string[] {
-    return this.jobRegistry.allNames();
+  get registeredJobs(): string[] {
+    return this.jobs.allNames();
+  }
+
+  public registerBackend(options: RegisterBackendOptions): QueueBackend {
+    const backend = this.backends.register(options.name, () => options.backend);
+    if (!backend) {
+      throw new BackendAlreadyRegisteredError(options.name);
+    }
+    if (!this.defaultBackend) {
+      this.defaultBackend = options.name;
+    }
+    return backend;
   }
 
   public registerQueue(options: RegisterQueueOptions): Queue {
     const makeQueue = () => Object.freeze({
       name: options.name,
-      backend: 'in-memory',
+      backend: options.backend || null,
     } as Queue);
-    const queue = this.queueRegistry.register(options.name, makeQueue);
+    const queue = this.queues.register(options.name, makeQueue);
     if (!queue) { throw new QueueAlreadyRegisteredError(options.name); }
     return queue;
   }
@@ -100,6 +125,7 @@ class QueueSchedulerServiceImp implements QueueSchedulerService {
         make: (context: Context) => ({
           schedule: async (scheduleOptions: JobScheduleOptions): Promise<QueuedJob> => {
             const queue = this.resolveQueue(scheduleOptions.on, defaultQueue);
+            const backend = this.resolveBackend(queue.backend);
 
             const job = {
               id: '',
@@ -107,15 +133,15 @@ class QueueSchedulerServiceImp implements QueueSchedulerService {
               context,
             };
 
-            const id = await this.backend.submit(job, { after: scheduleOptions.after });
+            const id = await backend.submit(job, { after: scheduleOptions.after });
             job.id = id;
 
             return {
               id,
               queue,
 
-              isScheduled: async () => this.backend.isScheduled(id),
-              cancel: async () => this.backend.cancel(id),
+              isScheduled: async () => backend.isScheduled(id),
+              cancel: async () => backend.cancel(id),
             };
           },
         }),
@@ -131,7 +157,7 @@ class QueueSchedulerServiceImp implements QueueSchedulerService {
       return manager;
     };
 
-    const jobManager = this.jobRegistry.register(options.name, makeJobManager);
+    const jobManager = this.jobs.register(options.name, makeJobManager);
     if (!jobManager) { throw new JobAlreadyRegisteredError(options.name); }
     return jobManager;
   }
@@ -139,15 +165,27 @@ class QueueSchedulerServiceImp implements QueueSchedulerService {
   private resolveQueue(queue?: Queue | string, defaultQueue: Queue = this.defaultQueue): Queue {
     if (!queue) { return defaultQueue; }
     const queueName = typeof queue === 'string' ? queue : queue.name;
-    const resolvedQueue = this.queueRegistry.get(queueName);
+    const resolvedQueue = this.queues.get(queueName);
     if (!resolvedQueue) {
       throw new QueueNotRegisteredError(queueName);
     }
     return resolvedQueue;
   }
 
+  private resolveBackend(backendName: string | null): QueueBackend {
+    backendName = backendName || this.defaultBackend;
+    if (!backendName) {
+      throw new NoDefaultBackendError();
+    }
+    const backend = this.backends.get(backendName);
+    if (!backend) {
+      throw new BackendNotRegisteredError(backendName);
+    }
+    return backend;
+  }
+
   private async executeJob(job: Job<unknown>): Promise<void> {
-    const manager = this.jobRegistry.get(job.name);
+    const manager = this.jobs.get(job.name);
     if (!manager) {
       throw new UnknownJobError(job.name);
     }

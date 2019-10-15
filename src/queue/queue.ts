@@ -2,7 +2,7 @@ import { Job } from '@lib/job';
 
 export interface Queue {
   readonly name: string;
-  readonly backend: string;
+  readonly backend: string | null;
 }
 
 export interface QueueBackendScheduleOptions {

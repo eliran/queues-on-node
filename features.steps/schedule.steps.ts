@@ -5,6 +5,7 @@ import * as Sinon from 'sinon';
 import { Job, JobManager } from 'src/job';
 import { Queue } from 'src/queue';
 import { makeQueueSchedulerService, QueuedJob, QueueSchedulerService } from 'src/queueSchedulerService';
+import { Local } from '@lib/queue/backend/local';
 
 class World {
   public fakeTimers!: SinonFakeTimers;
@@ -27,6 +28,7 @@ class Steps {
     this.world.fakeTimers = Sinon.useFakeTimers();
     this.world.executedJobs = [];
     this.world.queueService = makeQueueSchedulerService();
+    this.world.queueService.registerBackend({ name: 'local', backend: new Local() });
     await this.world.queueService.start();
   }
 

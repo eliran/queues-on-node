@@ -19,4 +19,8 @@ export class Registry<T> {
   public get(name: string): T | null {
     return this.entries[name] || null;
   }
+
+  public values(): T[] {
+    return Object.values(this.entries);
+  }
 }
