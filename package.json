@@ -11,8 +11,15 @@
     "test-features": "./node_modules/cucumber/bin/cucumber-js features/**/*.feature --require-module ts-node/register --require-module tsconfig-paths/register --require features.steps/**/*.ts --format progress-bar"
   },
   "nyc": {
+    "check-coverage": true,
+    "require": [
+      "ts-node/register/type-check"
+    ],
     "extensions": [
       ".ts"
+    ],
+    "include": [
+      "src/**/*.ts"
     ],
     "exclude": [
       "**/*.d.ts"
@@ -30,6 +37,7 @@
     "yarn": "^1.17.3"
   },
   "devDependencies": {
+    "@istanbuljs/nyc-config-typescript": "^0.1.3",
     "@types/chai": "^4.2.3",
     "@types/chai-as-promised": "^7.1.2",
     "@types/cucumber": "^4.0.7",
@@ -45,6 +53,7 @@
     "nyc": "^14.1.1",
     "sinon": "^7.5.0",
     "sinon-chai": "^3.3.0",
+    "source-map-support": "^0.5.13",
     "ts-node": "^8.4.1",
     "tsconfig-paths": "^3.9.0",
     "tsdoc": "^0.0.4",

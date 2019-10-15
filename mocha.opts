@@ -1,4 +1,5 @@
--r ts-node/register
+-r ts-node/register/type-check
+-r source-map-support/register
 -r tsconfig-paths/register
 --file mocha-common.ts
 src/**/*.spec.ts
