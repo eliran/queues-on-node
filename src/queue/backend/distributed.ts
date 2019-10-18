@@ -1,8 +1,73 @@
+import { DistributedJob, DistributedJobStatus, DistributedQueueBackendAccessor } from '@backend/accessors';
 import { Job } from '@lib/job';
 import { QueueBackend, QueueBackendOptions, QueueBackendScheduleOptions } from '@lib/queue';
-import uuid = require('uuid');
 import Timer = NodeJS.Timer;
 
+/*
+  What information do we keep for each job?
+  - Job Name, Job Id & Job Context: Used to call the correct job handler with the correct information
+  - Group Key: a key that groups multiple jobs
+  - Queue name: The name of the queue the job got scheduled on. (From the backend perspective this could be a real independent queues or virtual queues)
+  - RunAfter: The date we need to run the job after
+  - UpdatedAt: The last time we updated the job's information
+  - Status: scheduled, errored
+  - LatestError: the latest error information
+  - RetryCount: the retry count (0 when for first attempt)
+
+
+  Possible actions on jobs:
+  1. Enqueue a job (worker_id, job_id, queue_name, job_name, group_key, job_context, run_after)
+  2. Claim jobs: return new or possible existing jobs (a worker is expected to have claimed jobs in memory. No way to retreive jobs otherwise)
+  3. Delete a job: can delete a job that have a matching worker_id (including null for scheduled jobs)
+  4. Refresh ownership: must match worker id
+  5. UpdateErrorStatus(retry_count, error, reschedule):
+    three kinds of error updates:
+     a. backoff: updates the retry count and error, move back to scheduled and point to the future for retry
+     b. aborted: updates the retry count and error, set the status to errored
+     c. resume: reset retry count and error, set the status to scheduled
+    Both types releases ownership of the errored job.
+
+
+
+ Enqueuing a job sets its status to `scheduled`
+ Claiming a job sets its status to `processing`
+
+
+  Postgres:
+    CREATE TYPE job_status AS ENUM ('scheduled', 'processing', 'errored');
+
+    CREATE TABLE jobs (
+      job_id uuid PRIMARY KEY,
+      queue_name varchar NOT NULL,
+      job_name varchar NOT NULL,
+      group_key varchar,
+      job_context jsonb NOT NULL,
+      run_after date,
+      worker_id uuid,
+      status job_status NOT NULL,
+      latest_error jsonb,
+      retry_count int NOT NULL,
+      updated_at date NOT NULL,
+      created_at date NOT NULL
+    );
+
+    Indices:
+
+     queue_name
+     run_after
+     updated_at
+
+     The most performance senstive query for postgres is the claim ownership
+
+     1. (worker_id IS NULL AND status='scheduled' AND run_after >= now())
+     2. (worker_id IS NOT NULL AND updated_at <= now() - INTERVAL '30 seconds')
+
+    indices for queries:
+       (status, worker_id, run_after)
+       (worker_id, updated_at)
+
+    Each worker will have a small amount of rows active at any given time
+ */
 export class DistributedQueueBackend implements QueueBackend {
   private timer: Timer | null = null;
   private workerId: string | null = null;
@@ -32,16 +97,31 @@ export class DistributedQueueBackend implements QueueBackend {
   }
 
   public async cancel(id: string): Promise<void> {
-    return undefined;
+    await this.accessor.deleteJob(null, id);
   }
 
   public async isScheduled(id: string): Promise<boolean> {
-    return !!await this.accessor.getJob(id);
+    switch (await this.accessor.getJobStatus(id)) {
+      case DistributedJobStatus.PROCESSING:
+      case DistributedJobStatus.SCHEDULED:
+        return true;
+      default:
+        return false;
+    }
   }
 
   public async submit(job: Job<unknown>, options: QueueBackendScheduleOptions): Promise<string> {
     const jobId = await this.accessor.generateJobId();
-    // await this.accessor.enqueueJob(this.workerId, {});
+    await this.accessor.enqueueJob(this.workerId, {
+      queueName: '',
+
+      jobId,
+      jobName: job.name,
+      jobContext: job.context,
+
+      groupKey: null,
+      runAfter: options.after || null,
+    });
     return jobId;
   }
 
@@ -51,152 +131,42 @@ export class DistributedQueueBackend implements QueueBackend {
       const potentialNewJobs = await this.accessor.claimOwnership(this.workerId,  maximumJobsToClaim);
       const newJobs = potentialNewJobs.filter((job) => !this.jobs.has(job.jobId));
       // Not awaiting promises from the forEach block as they need to run in parallel
-      newJobs.forEach(this.startJobProcessing.bind(this));
+      newJobs.forEach(this.processJob.bind(this));
     }
   }
 
-  private async startJobProcessing(job: DistributedJob): Promise<void> {
+  private async processJob(job: DistributedJob): Promise<void> {
     try {
-
+      // TODO: invoke the job handler
       await this.jobCompleted(job);
     } catch (e) {
-      await this.jobFailed(job);
+      await this.jobFailed(job, e);
     }
   }
 
   private async jobCompleted(job: DistributedJob): Promise<void> {
     if (this.workerId) {
-      await this.accessor.completedOwnedJob(this.workerId, job.jobId);
+      await this.accessor.deleteJob(this.workerId, job.jobId);
     }
     this.jobs.delete(job.jobId);
   }
 
-  private async jobFailed(job: DistributedJob): Promise<void> {
+  private async jobFailed(job: DistributedJob, error: Error): Promise<void> {
+    if (!this.workerId) { return; }
     /*
-      Job failed:
-      1. update job retry information
-      2. if no more retries are allowed, mark job as an error
-      3.
+      1. If job has retry attempts left (the job type has this configuration), schedule a retry
+          a. if the retry time is below a threshold (like < 5 seconds), add this job to an internal priority queue for errors
+          b. otherwise, reschedule the job in the queue using backoff
+      2. If retry attempts left, error the job
      */
+    if (job.retryAttempts >= 5) {
+      await this.accessor.errorOwnedJob(this.workerId, job.jobId, { error: { ...error } });
+    } else {
+      await this.accessor.backoffOwnedJob(this.workerId, job.jobId, job.retryAttempts + 1, 5);
+    }
   }
 
   private shouldClaimNewJobs(): boolean {
     return this.completedJobs >= 10 && this.jobs.size < 10;
-  }
-}
-
-interface DistributedJob {
-  queue: string;
-  job: string;
-  jobId: string;
-  context: any;
-  after: Date;
-  updatedAt: Date;
-}
-
-export interface DistributedQueueBackendAccessor {
-  /**
-   * Register a new worker
-   * @returns a worker id to be used with when workerId is needed
-   */
-  registerWorker(): Promise<string>;
-
-  /**
-   * Deregister a worker and possibly release all owned jobs
-   * @param workerId worker id to deregister
-   */
-  deregisterWorker(workerId: string): Promise<void>;
-
-  /**
-   * Generate a new job id to be used with enqueue
-   * @returns a job id
-   */
-  generateJobId(): Promise<string>;
-
-  enqueueJob(workerId: string | null, job: DistributedJob): Promise<void>;
-
-  ownedJobs(workerId: string, maximumJobs: number): Promise<DistributedJob[]>;
-
-  /**
-   * Fetch a job
-   * @param jobId job's id to fetch
-   * @returns the job information or null if not found
-   */
-  getJob(jobId: string): Promise<DistributedJob | null>;
-
-  /**
-   * Claim ownership of jobs that are ready to work on and not currently assigned to any worker or didn't have their ownership refreshed
-   * @param workerId worker id to assign ownership to
-   * @param maximumJobs maximum jobs to claim ownership
-   * @returns list of claimed jobs. This method could return jobs that were already claimed before.
-   */
-  claimOwnership(workerId: string, maximumJobs: number): Promise<DistributedJob[]>;
-
-  /**
-   * Try to refresh ownership of jobs. Needs to be called periodically on jobs that take longer than
-   * ownership expiration time to make sure that other workers won't take ownership of the job
-   * @param workerId worker id to refresh ownership of
-   * @param jobIds list of job ids to refresh ownership
-   */
-  refreshOwnership(workerId: string, jobIds: string[]): Promise<void>;
-
-  /**
-   * Mark a job completed. It will only complete the job if it is owned by the provided worker
-   * @param workerId worker id that completed the job
-   * @param jobId job id that has been completed
-   */
-  completedOwnedJob(workerId: string, jobId: string): Promise<void>;
-}
-
-interface DatabaseAccessor {
-  execute(query: string, namedArgs: { [key: string]: any }): Promise<unknown>;
-}
-
-/**
- * Postgres distributed queue accessor implementation
- *
- */
-class PostgresDistributedQueueBackendAccessor implements DistributedQueueBackendAccessor {
-  constructor(private db: DatabaseAccessor, private tableBaseName: string) {}
-
-  public async registerWorker(): Promise<string> {
-    return uuid.v4();
-  }
-
-  public async generateJobId(): Promise<string> {
-    return uuid.v4();
-  }
-
-  public async deregisterWorker(workerId: string): Promise<void> {
-  }
-
-  public async claimOwnership(workerId: string, maximumJobs: number): Promise<DistributedJob[]> {
-    await this.db.execute(`
-        UPDATE ${this.tableBaseName} SET worker_id=:workerId WHERE workerId IS NULL OR updatedAt >= NOW() - INTERVAL '20 seconds' RETURNING *
-    `, {
-      worker_id: workerId,
-    });
-    return [];
-  }
-
-  public async completedOwnedJob(workerId: string, jobId: string): Promise<void> {
-  }
-
-  public async getJob(jobId: string): Promise<DistributedJob | null> {
-    return await this.db.execute(`SELECT * FROM ${this.tableBaseName} WHERE job_id=:jobId`, { jobId }) as DistributedJob;
-  }
-
-  public async enqueueJob(workerId: string | null, job: DistributedJob): Promise<void> {
-    await this.db.execute(`INSERT INTO ${this.tableBaseName} VALUES()`, { workerId, job });
-  }
-
-  public async ownedJobs(workerId: string, maximumJobs: number): Promise<DistributedJob[]> {
-    return [];
-  }
-
-  public async refreshOwnership(workerId: string, jobIds: string[]): Promise<void> {
-    await this.db.execute(`
-      UPDATE ${this.tableBaseName} SET updated_at=NOW() WHERE worker_id=:workerId AND job_id IN (:jobIds)
-    `, { workerId, jobIds });
   }
 }
