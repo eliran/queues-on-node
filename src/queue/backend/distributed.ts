@@ -68,12 +68,18 @@ import Timer = NodeJS.Timer;
 
     Each worker will have a small amount of rows active at any given time
  */
+export const DISTRIBUTED_QUEUE_BACKEND_DEFAULT_MAXIMUM_CONCURRENT_JOBS = 20;
+export const DISTRIBUTED_QUEUE_BACKEND_DEFAULT_NORMAL_CLAIM_RATE = 1000;
+export const DISTRIBUTED_QUEUE_BACKEND_DEFAULT_RETRIES = 5;
+export const DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS = 5;
+
 export class DistributedQueueBackend implements QueueBackend {
   private timer: Timer | null = null;
   private workerId: string | null = null;
   private jobs = new Map<string, DistributedJob>();
   private completedJobs: number = 0;
-  private maximumJobsToProcess: number = 20;
+  private maximumJobsToProcess: number = DISTRIBUTED_QUEUE_BACKEND_DEFAULT_MAXIMUM_CONCURRENT_JOBS;
+  private options: QueueBackendOptions | null = null;
 
   constructor(private accessor: DistributedQueueBackendAccessor) {}
 
@@ -81,8 +87,9 @@ export class DistributedQueueBackend implements QueueBackend {
     if (this.timer || this.workerId) {
       await this.shutdown();
     }
+    this.options = options;
     this.workerId = await this.accessor.registerWorker();
-    this.timer = setInterval(this.processQueue.bind(this), 1000);
+    this.timer = setInterval(this.processQueue.bind(this), DISTRIBUTED_QUEUE_BACKEND_DEFAULT_NORMAL_CLAIM_RATE);
   }
 
   public async shutdown(): Promise<void> {
@@ -137,7 +144,13 @@ export class DistributedQueueBackend implements QueueBackend {
 
   private async processJob(job: DistributedJob): Promise<void> {
     try {
-      // TODO: invoke the job handler
+      if (this.options) {
+        await this.options.executeHandler({
+          id: job.jobId,
+          name: job.jobName,
+          context: job.jobContext,
+        } as Job<unknown>);
+      }
       await this.jobCompleted(job);
     } catch (e) {
       await this.jobFailed(job, e);
@@ -159,10 +172,12 @@ export class DistributedQueueBackend implements QueueBackend {
           b. otherwise, reschedule the job in the queue using backoff
       2. If retry attempts left, error the job
      */
-    if (job.retryAttempts >= 5) {
-      await this.accessor.errorOwnedJob(this.workerId, job.jobId, { error: { ...error } });
+    if (job.retryAttempts >= DISTRIBUTED_QUEUE_BACKEND_DEFAULT_RETRIES) {
+      console.log(`Error: ${error}`, error);
+
+      await this.accessor.errorOwnedJob(this.workerId, job.jobId, { error: { name: error.name, message: error.message, stack: error.stack } });
     } else {
-      await this.accessor.backoffOwnedJob(this.workerId, job.jobId, job.retryAttempts + 1, 5);
+      await this.accessor.backoffOwnedJob(this.workerId, job.jobId, job.retryAttempts + 1, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS);
     }
   }
 

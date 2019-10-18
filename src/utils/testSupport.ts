@@ -4,6 +4,10 @@ export {} from 'sinon-chai';
 
 import * as Sinon from 'sinon';
 
+export { Sync as MockFactory } from 'factory.ts';
+import * as Casual from 'casual';
+export const casual = Casual;
+
 export function sinonTypeProxy<T>(overrides: Partial<T> = {}, base: {} = {}): Sinon.SinonStubbedInstance<T> {
   return typeProxy<T>(Sinon.stub, overrides, base) as Sinon.SinonStubbedInstance<T>;
 }
