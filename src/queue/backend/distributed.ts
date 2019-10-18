@@ -167,6 +167,6 @@ export class DistributedQueueBackend implements QueueBackend {
   }
 
   private shouldClaimNewJobs(): boolean {
-    return this.completedJobs >= 10 && this.jobs.size < 10;
+    return this.jobs.size <= (this.maximumJobsToProcess / 2);
   }
 }
