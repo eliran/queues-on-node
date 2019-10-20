@@ -173,8 +173,6 @@ export class DistributedQueueBackend implements QueueBackend {
       2. If retry attempts left, error the job
      */
     if (job.retryAttempts >= DISTRIBUTED_QUEUE_BACKEND_DEFAULT_RETRIES) {
-      console.log(`Error: ${error}`, error);
-
       await this.accessor.errorOwnedJob(this.workerId, job.jobId, { error: { name: error.name, message: error.message, stack: error.stack } });
     } else {
       await this.accessor.backoffOwnedJob(this.workerId, job.jobId, job.retryAttempts + 1, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS);

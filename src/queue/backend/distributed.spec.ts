@@ -1,24 +1,8 @@
-import { expect, MockFactory, sinonTypeProxy } from '@test';
+import { distributedJobFactory, expect, sinonTypeProxy } from '@test';
 import { SinonFakeTimers, SinonStub } from 'sinon';
 import * as Sinon from 'sinon';
 import { DistributedJob, DistributedJobStatus, DistributedQueueBackendAccessor } from 'src/queue/backend/accessors';
 import { DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_MAXIMUM_CONCURRENT_JOBS, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_RETRIES, DistributedQueueBackend } from 'src/queue/backend/distributed';
-
-const distributedJobFactory = MockFactory.makeFactory<DistributedJob>({
-  workerId: 'worker-1',
-  jobId: 'job-1',
-  jobName: 'job',
-  jobContext: {},
-  queueName: 'queue',
-  groupKey: null,
-
-  latestError: null,
-  retryAttempts: 0,
-  status: DistributedJobStatus.PROCESSING,
-  runAfter: new Date(),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-});
 
 describe('Distributed backend', function() {
   let fakeTimers!: SinonFakeTimers;
@@ -112,7 +96,7 @@ describe('Distributed backend', function() {
 
       await simulateClaimOwnershipWithJobs([job]);
 
-      expect(mockAccessor.deleteJob).to.be.calledOnceWith('worker-1', 'job-1');
+      expect(mockAccessor.deleteJob).to.be.calledOnceWith('worker-1', job.jobId);
     });
 
     it('should backoff a job if errored', async function() {
@@ -122,7 +106,7 @@ describe('Distributed backend', function() {
 
       await simulateClaimOwnershipWithJobs([job]);
 
-      expect(mockAccessor.backoffOwnedJob).to.be.calledOnceWith('worker-1', 'job-1', job.retryAttempts + 1, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS);
+      expect(mockAccessor.backoffOwnedJob).to.be.calledOnceWith('worker-1', job.jobId, job.retryAttempts + 1, DISTRIBUTED_QUEUE_BACKEND_DEFAULT_BACKOFF_TIME_IN_SECONDS);
     });
 
     it('should error if a job had too many retries', async function() {
@@ -132,12 +116,29 @@ describe('Distributed backend', function() {
 
       await simulateClaimOwnershipWithJobs([job]);
 
-      expect(mockAccessor.errorOwnedJob).to.be.calledOnceWith('worker-1', 'job-1');
+      expect(mockAccessor.errorOwnedJob).to.be.calledOnceWith('worker-1', job.jobId);
       expect(mockAccessor.errorOwnedJob.firstCall.args[2]).to.have.key('error')
         .and.nested.include({ 'error.name': 'Error', 'error.message': 'some error' });
       expect((mockAccessor.errorOwnedJob.firstCall.args[2] as { error: {} }).error).to.keys('stack', 'name', 'message');
     });
 
+    [ { status: DistributedJobStatus.SCHEDULED, expectedResponse: true },
+      { status: DistributedJobStatus.ERRORED, expectedResponse: false },
+      { status: DistributedJobStatus.PROCESSING, expectedResponse: true } ].forEach((testCase) => {
+       it(`#isScheduled for a "${testCase.status}" job should be ${testCase.expectedResponse}`, async function() {
+          mockAccessor.getJobStatus.resolves(testCase.status);
+
+          await expect(sut.isScheduled('job-1')).to.become(testCase.expectedResponse);
+          await expect(mockAccessor.getJobStatus).to.be.calledOnceWith('job-1');
+       });
+    });
+
+    /*
+      1. Test deregister worker when a job is in progress
+      2. accessor returning error for different operations and the current handling of them
+      3. Check filling up work queue refill queue rules
+      4. Check quick refill rules when jobs complete
+     */
     async function simulateClaimOwnershipWithJobs(jobs: DistributedJob[]): Promise<void> {
       mockAccessor.claimOwnership.resolves(jobs);
       normalRateTick();

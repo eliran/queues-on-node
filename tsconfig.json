@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    // "incremental": true,                   /* Enable incremental compilation */
-    "target": "es2015",                          /* Specify ECMAScript target version: 'ES3' (default), 'ES5', 'ES2015', 'ES2016', 'ES2017', 'ES2018', 'ES2019' or 'ESNEXT'. */
-    "module": "commonjs",                     /* Specify module code generation: 'none', 'commonjs', 'amd', 'system', 'umd', 'es2015', or 'ESNext'. */
-    "lib": ["es5", "es6", "es2015"], /* Specify library files to be included in the compilation. */
+    // "incremental": true,
+    "target": "es2015",
+    "module": "commonjs",
+    "lib": ["es5", "es6", "es2015"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -32,14 +32,13 @@
     "baseUrl": "./",
     "paths": {
       "@lib/*": [ "src/*" ],
-      "@backend/*": ["src/queue/backend/*"],
+      "@backend/*": [ "src/queue/backend/*" ],
       "@steps/*": [ "features.steps/*" ],
-      "@test": ["src/utils/testSupport.ts"]
+      "@testSupport/*": [ "src/testSupport/*" ],
+      "@test": [ "src/testSupport/index.ts" ]
     },                          
-    // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */
-    "types": ["node", "mocha"],
-    // "allowSyntheticDefaultImports": true,  /* Allow default imports from modules with no default export. This does not affect code emit, just typechecking. */
-    "esModuleInterop": true,                  /* Enables emit interoperability between CommonJS and ES Modules via creation of namespace objects for all imports. Implies 'allowSyntheticDefaultImports'. */
+    "types": [ "node", "mocha" ],
+    "esModuleInterop": true,
     // "preserveSymlinks": true,              /* Do not resolve the real path of symlinks. */
     // "allowUmdGlobalAccess": true,          /* Allow accessing UMD globals from modules. */
 
@@ -60,6 +59,8 @@
     "node_modules",
     "features.steps",
     "**/*/*.spec.ts",
+    "**/*/*.ispec.ts",
+    "src/testSupport",
     "dist"
   ]
 }

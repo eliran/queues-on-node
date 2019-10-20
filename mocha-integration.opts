@@ -1,0 +1,8 @@
+-r ts-node/register/type-check
+-r source-map-support/register
+-r tsconfig-paths/register
+-r mocha-integration.ts
+--timeout 5000
+--file mocha-common.ts
+--delay
+src/**/*.ispec.ts
