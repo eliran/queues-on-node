@@ -3,6 +3,7 @@ import { distributedJobFactory, expect } from '@test';
 import { pg } from '@testSupport/postgres';
 import { DistributedJob, DistributedJobStatus } from 'src/queue/backend/accessors/index';
 import { DistributedQueueBackend } from 'src/queue/backend/distributed';
+import { constructExclusionsMap } from 'tslint/lib/rules/completed-docs/exclusions';
 import uuid = require('uuid');
 
 describe('Postgres queue backend', function() {
@@ -125,7 +126,7 @@ describe('Postgres queue backend', function() {
         const currentUpdatedAt = (await fetchJob(expiredJob.jobId, false))!.updatedAt;
 
         expect(currentUpdatedAt).to.be.greaterThan(previousUpdatedAt);
-        expect(currentUpdatedAt.getTime() - previousUpdatedAt.getTime()).to.be.greaterThan(59);
+        expect(currentUpdatedAt.getTime() - previousUpdatedAt.getTime()).to.be.greaterThan(59 * 1000);
     });
   });
 
@@ -200,7 +201,7 @@ describe('Postgres queue backend', function() {
 
         const updatedOwned = (await fetchJob(owned.jobId, false))!;
         expect(updatedOwned.runAfter, 'runAfter').to.not.be.null;
-        expect(updatedOwned.runAfter!.getTime() - updatedOwned.createdAt.getTime(), 'runAfter time').to.be.greaterThan(59);
+        expect(updatedOwned.runAfter!.getTime() - updatedOwned.createdAt.getTime(), 'runAfter time').to.be.greaterThan(59 * 1000);
         expect(updatedOwned.workerId).to.be.null;
         expect(updatedOwned.status).to.equal(DistributedJobStatus.SCHEDULED);
         expect(updatedOwned.retryAttempts).to.equal(5);
@@ -241,13 +242,28 @@ describe('Postgres queue backend', function() {
     const workerId = uuid.v4();
 
     it('should not update ownership of an unowned job', async function() {
-      const unassigned = (await enqueueSampleJobs(1))[0];
-      const assigned = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+      const updatedAt = nowPlusSeconds(-60);
+      const unassigned = (await enqueueSampleJobs(1, { updatedAt, keepFields: true }))[0];
+      const assigned = (await enqueueSampleJobs(1, { updatedAt, workerId: uuid.v4(), keepFields: true }))[0];
 
       await sut.refreshOwnership(workerId, [unassigned.jobId, assigned.jobId]);
 
-      expect(await fetchJob(unassigned.jobId, false)).to.include({ updatedAt: unassigned.updatedAt });
-      expect(await fetchJob(assigned.jobId, false)).to.include({ updatedAt: assigned.updatedAt });
+      expect(await fetchJob(unassigned.jobId, false)).to.deep.include({ updatedAt });
+      expect(await fetchJob(assigned.jobId, false)).to.deep.include({ updatedAt });
+    });
+
+    it('should update ownership of owned jobs', async function() {
+      const updatedAt = nowPlusSeconds(-60);
+      const owned = await enqueueSampleJobs(2, { workerId, updatedAt, keepFields: true });
+
+      await sut.refreshOwnership(workerId, owned.map((job) => job.jobId));
+
+      const updatedOwned = await Promise.all(owned.map(async (job) => (await fetchJob(job.jobId, false))!));
+
+      updatedOwned.forEach((job) => {
+        expect(job.updatedAt).to.not.equal(updatedAt);
+        expect(job.updatedAt.getTime() - updatedAt.getTime()).to.be.greaterThan(59 * 1000);
+      });
     });
   });
 
@@ -280,7 +296,7 @@ describe('Postgres queue backend', function() {
     return remove ? removeFields(distributedJob) : distributedJob;
   }
 
-  async function enqueueSampleJobs(count: number, options: { workerId?: string, runAfter?: Date, updatedAt?: Date } = {}): Promise<DistributedJob[]> {
+  async function enqueueSampleJobs(count: number, options: { workerId?: string, runAfter?: Date, updatedAt?: Date, keepFields?: boolean } = {}): Promise<DistributedJob[]> {
     const jobs: DistributedJob[] = [];
     for (let i = 0; i < count; i++) {
       const sampleJob = distributedJobFactory.build({
@@ -290,9 +306,10 @@ describe('Postgres queue backend', function() {
       });
       await sut.enqueueJob(sampleJob.workerId, sampleJob);
       if (options.updatedAt) {
+        sampleJob.updatedAt = options.updatedAt;
         await pg(sut.tableName).update({ updated_at: options.updatedAt }).where('job_id', sampleJob.jobId);
       }
-      jobs.push(removeFields(sampleJob));
+      jobs.push(options.keepFields ? sampleJob : removeFields(sampleJob));
     }
     return jobs;
   }

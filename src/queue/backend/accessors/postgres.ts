@@ -7,7 +7,7 @@ export interface DatabaseAccessorResult {
 }
 
 export interface DatabaseAccessor {
-  execute(query: string, namedArgs: { [key: string]: any }): Promise<DatabaseAccessorResult>;
+  execute(query: string, namedArgs: { [key: string]: any } | [ any ]): Promise<DatabaseAccessorResult>;
 }
 
 export interface DBPostgresJob {
@@ -138,8 +138,9 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   }
 
   public async refreshOwnership(workerId: string, jobIds: string[]): Promise<void> {
+    const placeholders = jobIds.map(() => '?').join(',');
     await this.db.execute(`
-      UPDATE ${this.tableName} SET updated_at=NOW() WHERE worker_id=:workerId AND job_id IN (:jobIds)
-    `, { workerId, jobIds });
+      UPDATE ${this.tableName} SET updated_at=NOW() WHERE worker_id=? AND job_id IN (${placeholders})
+    `, [workerId, ...jobIds]);
   }
 }
