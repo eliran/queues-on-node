@@ -197,13 +197,17 @@ describe('Postgres queue backend', function() {
     });
   });
 
-  describe('#backoffOwnedJob');
+  describe('#backoffOwnedJob', function() {
+  });
 
-  describe('#errorOwnedJob');
+  describe('#errorOwnedJob', function() {
+  });
 
-  describe('#retryErroredJob');
+  describe('#retryErroredJob', function() {
+  });
 
-  describe('#refreshOwnership');
+  describe('#refreshOwnership', function() {
+  });
 
   function removeFields(value: any): any {
     delete value.createdAt;
