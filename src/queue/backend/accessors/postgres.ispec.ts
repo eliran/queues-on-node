@@ -54,6 +54,8 @@ describe('Postgres queue backend', function() {
   describe('#claimOwnership', function() {
     const workerId = uuid.v4();
 
+    // It should be able to control the stale job interval
+    // The default stale interval should be 30 seconds
     it('should claim ownership of unassigned jobs that needs to run', async function() {
       const unassignedJobs = await enqueueSampleJobs(2);
       const assignedJobs = await enqueueSampleJobs(1, { workerId: uuid.v4() });
@@ -194,6 +196,14 @@ describe('Postgres queue backend', function() {
       expect(await fetchJob(job.jobId)).to.not.be.null;
     });
   });
+
+  describe('#backoffOwnedJob');
+
+  describe('#errorOwnedJob');
+
+  describe('#retryErroredJob');
+
+  describe('#refreshOwnership');
 
   function removeFields(value: any): any {
     delete value.createdAt;
