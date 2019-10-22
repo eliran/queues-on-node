@@ -236,6 +236,38 @@ describe('Postgres queue backend', function() {
   });
 
   describe('#retryErroredJob', function() {
+    const workerId = uuid.v4();
+
+    it('should not change non errored jobs', async function() {
+      const unassigned = (await enqueueSampleJobs(1))[0];
+      const future = (await enqueueSampleJobs(1, { runAfter: nowPlusSeconds(60) }))[0];
+      const assigned = (await enqueueSampleJobs(1, { workerId }))[0];
+
+      await sut.retryErroredJob(unassigned.jobId);
+      await sut.retryErroredJob(future.jobId);
+      await sut.retryErroredJob(assigned.jobId);
+
+      expect(await fetchJob(unassigned.jobId)).to.eql(unassigned);
+      expect(await fetchJob(future.jobId)).to.eql(future);
+      expect(await fetchJob(assigned.jobId)).to.eql(assigned);
+    });
+
+    it('should reset errored jobs to be scheduled again', async function() {
+      const assigned = (await enqueueSampleJobs(1, { workerId }))[0];
+      await sut.backoffOwnedJob(workerId, assigned.jobId, 10, 60);
+      await pg(sut.tableName).update({ worker_id: workerId }).where('job_id', assigned.jobId);
+      await sut.errorOwnedJob(workerId, assigned.jobId, {});
+
+      await sut.retryErroredJob(assigned.jobId);
+
+      expect(await fetchJob(assigned.jobId)).to.include({
+        workerId: null,
+        retryAttempts: 0,
+        runAfter: null,
+        latestError: null,
+        status: DistributedJobStatus.SCHEDULED,
+      });
+    });
   });
 
   describe('#refreshOwnership', function() {

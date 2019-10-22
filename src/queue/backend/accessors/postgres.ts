@@ -125,6 +125,11 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   }
 
   public async retryErroredJob(jobId: string): Promise<void> {
+    await this.db.execute(`
+      UPDATE ${this.tableName}
+        SET worker_id=NULL, retry_attempts=0, latest_error=NULL, status='scheduled', run_after=NULL
+        WHERE job_id=? AND status='errored'
+    `, [jobId]);
   }
 
   public async enqueueJob(workerId: string | null, job: DistributedJob): Promise<void> {
