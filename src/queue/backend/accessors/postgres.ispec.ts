@@ -238,6 +238,17 @@ describe('Postgres queue backend', function() {
   });
 
   describe('#refreshOwnership', function() {
+    const workerId = uuid.v4();
+
+    it('should not update ownership of an unowned job', async function() {
+      const unassigned = (await enqueueSampleJobs(1))[0];
+      const assigned = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+
+      await sut.refreshOwnership(workerId, [unassigned.jobId, assigned.jobId]);
+
+      expect(await fetchJob(unassigned.jobId, false)).to.include({ updatedAt: unassigned.updatedAt });
+      expect(await fetchJob(assigned.jobId, false)).to.include({ updatedAt: assigned.updatedAt });
+    });
   });
 
   function removeFields(value: any): any {
