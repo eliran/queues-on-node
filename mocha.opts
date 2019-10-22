@@ -1,3 +1,4 @@
 -r ts-node/register
 -r tsconfig-paths/register
+--file mocha-common.ts
 src/**/*.spec.ts
