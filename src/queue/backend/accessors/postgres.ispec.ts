@@ -2,6 +2,7 @@ import { DatabaseAccessor, DBPostgresJob, PostgresDistributedQueueBackendAccesso
 import { distributedJobFactory, expect } from '@test';
 import { pg } from '@testSupport/postgres';
 import { DistributedJob, DistributedJobStatus } from 'src/queue/backend/accessors/index';
+import { DistributedQueueBackend } from 'src/queue/backend/distributed';
 import uuid = require('uuid');
 
 describe('Postgres queue backend', function() {
@@ -126,25 +127,6 @@ describe('Postgres queue backend', function() {
         expect(currentUpdatedAt).to.be.greaterThan(previousUpdatedAt);
         expect(currentUpdatedAt.getTime() - previousUpdatedAt.getTime()).to.be.greaterThan(59);
     });
-
-    async function enqueueSampleJobs(count: number, options: { workerId?: string, runAfter?: Date, updatedAt?: Date } = {}): Promise<DistributedJob[]> {
-      const jobs: DistributedJob[] = [];
-      for (let i = 0; i < count; i++) {
-        const sampleJob = distributedJobFactory.build({ workerId: options.workerId || null, runAfter: options.runAfter || null });
-        await sut.enqueueJob(sampleJob.workerId, sampleJob);
-        if (options.updatedAt) {
-          await pg(sut.tableName).update({ updated_at: options.updatedAt }).where('job_id', sampleJob.jobId);
-        }
-        jobs.push(removeFields(sampleJob));
-      }
-      return jobs;
-    }
-
-    function nowPlusSeconds(seconds: number): Date {
-      const now = new Date();
-      now.setTime(now.getTime() + seconds * 1000);
-      return now;
-    }
   });
 
   describe('#deleteJob', function() {
@@ -198,9 +180,58 @@ describe('Postgres queue backend', function() {
   });
 
   describe('#backoffOwnedJob', function() {
+    const workerId = uuid.v4();
+
+    it('should not backoff a job not owned by worker', async function() {
+      const unassigned = (await enqueueSampleJobs(1))[0];
+      const assigned = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+
+      await sut.backoffOwnedJob(workerId, unassigned.jobId, 1, 10);
+      await sut.backoffOwnedJob(workerId, assigned.jobId, 1, 10);
+
+      expect(await fetchJob(unassigned.jobId)).to.include({ retryAttempts: 0 });
+      expect(await fetchJob(assigned.jobId)).to.include({ retryAttempts: 0 });
+    });
+
+    it('should backoff a job owned by worker', async function() {
+        const owned = (await enqueueSampleJobs(1, { workerId }))[0];
+
+        await sut.backoffOwnedJob(workerId, owned.jobId, 5, 60);
+
+        const updatedOwned = (await fetchJob(owned.jobId, false))!;
+        expect(updatedOwned.runAfter, 'runAfter').to.not.be.null;
+        expect(updatedOwned.runAfter!.getTime() - updatedOwned.createdAt.getTime(), 'runAfter time').to.be.greaterThan(59);
+        expect(updatedOwned.workerId).to.be.null;
+        expect(updatedOwned.status).to.equal(DistributedJobStatus.SCHEDULED);
+        expect(updatedOwned.retryAttempts).to.equal(5);
+    });
   });
 
   describe('#errorOwnedJob', function() {
+    const workerId = uuid.v4();
+
+    it('should not error non owned jobs', async function() {
+      const unassigned = (await enqueueSampleJobs(1))[0];
+      const assigned = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+
+      await sut.errorOwnedJob(workerId, unassigned.jobId, { error: 'one' });
+
+      expect(await fetchJob(unassigned.jobId)).to.include({ status: DistributedJobStatus.SCHEDULED, latestError: null });
+      expect(await fetchJob(assigned.jobId)).to.include({ status: DistributedJobStatus.PROCESSING, latestError: null, workerId: assigned.workerId });
+    });
+
+    it('should error owned jobs', async function() {
+      const owned = (await enqueueSampleJobs(1, { workerId, runAfter: new Date() }))[0];
+
+      await sut.errorOwnedJob(workerId, owned.jobId, { error: 'one' });
+
+      expect(await fetchJob(owned.jobId)).to.deep.include( {
+        status: DistributedJobStatus.ERRORED,
+        latestError: { error: 'one' },
+        workerId: null,
+        runAfter: null,
+      });
+    });
   });
 
   describe('#retryErroredJob', function() {
@@ -238,4 +269,26 @@ describe('Postgres queue backend', function() {
     return remove ? removeFields(distributedJob) : distributedJob;
   }
 
+  async function enqueueSampleJobs(count: number, options: { workerId?: string, runAfter?: Date, updatedAt?: Date } = {}): Promise<DistributedJob[]> {
+    const jobs: DistributedJob[] = [];
+    for (let i = 0; i < count; i++) {
+      const sampleJob = distributedJobFactory.build({
+        workerId: options.workerId || null,
+        runAfter: options.runAfter || null,
+        status: options.workerId ? DistributedJobStatus.PROCESSING : DistributedJobStatus.SCHEDULED,
+      });
+      await sut.enqueueJob(sampleJob.workerId, sampleJob);
+      if (options.updatedAt) {
+        await pg(sut.tableName).update({ updated_at: options.updatedAt }).where('job_id', sampleJob.jobId);
+      }
+      jobs.push(removeFields(sampleJob));
+    }
+    return jobs;
+  }
+
+  function nowPlusSeconds(seconds: number): Date {
+    const now = new Date();
+    now.setTime(now.getTime() + seconds * 1000);
+    return now;
+  }
 });

@@ -99,6 +99,11 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   }
 
   public async backoffOwnedJob(workerId: string, jobId: string, retryAttempt: number, backoffTimeOffsetInSeconds: number): Promise<void> {
+    await this.db.execute(`
+      UPDATE ${this.tableName}
+        SET worker_id=NULL, status='scheduled', retry_attempts=:retryAttempt, run_after=NOW() + INTERVAL '${backoffTimeOffsetInSeconds} seconds'
+        WHERE worker_id=:workerId AND job_id=:jobId
+    `, { workerId, jobId, retryAttempt });
   }
 
   public async deleteJob(workerId: string | null, jobId: string): Promise<void> {
@@ -108,6 +113,11 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   }
 
   public async errorOwnedJob<Reason extends {}>(workerId: string, jobId: string, reason: Reason): Promise<void> {
+    await this.db.execute(`
+      UPDATE ${this.tableName}
+        SET worker_id=NULL, status='errored', run_after=NULL, latest_error=:reason
+        WHERE worker_id=:workerId AND job_id=:jobId
+    `, { workerId, jobId, reason });
   }
 
   public async getJobStatus(jobId: string): Promise<DistributedJobStatus | 'not-supported' | null> {
