@@ -121,7 +121,10 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   }
 
   public async getJobStatus(jobId: string): Promise<DistributedJobStatus | 'not-supported' | null> {
-    return 'not-supported';
+    const result = await this.db.execute(`
+      SELECT status FROM ${this.tableName} WHERE job_id=?
+    `, [jobId]);
+    return result.rowCount === 1 ? (result.rows[0] as { status: DistributedJobStatus }).status : null;
   }
 
   public async retryErroredJob(jobId: string): Promise<void> {

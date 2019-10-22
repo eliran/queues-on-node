@@ -270,6 +270,27 @@ describe('Postgres queue backend', function() {
     });
   });
 
+  describe('#getJobStatus', function() {
+    it('should return #scheduled status', async function() {
+      const unassigned = (await enqueueSampleJobs(1))[0];
+
+      expect(await sut.getJobStatus(unassigned.jobId)).to.equal(DistributedJobStatus.SCHEDULED);
+    });
+
+    it('should return #processing status', async function() {
+      const assigned = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+
+      expect(await sut.getJobStatus(assigned.jobId)).to.equal(DistributedJobStatus.PROCESSING);
+    });
+
+    it('should return #errored status', async function() {
+      const errored = (await enqueueSampleJobs(1, { workerId: uuid.v4() }))[0];
+      await sut.errorOwnedJob(errored.workerId!, errored.jobId, {});
+
+      expect(await sut.getJobStatus(errored.jobId)).to.equal(DistributedJobStatus.ERRORED);
+    });
+  });
+
   describe('#refreshOwnership', function() {
     const workerId = uuid.v4();
 
