@@ -21,7 +21,7 @@ async function waitForPostgresBoot(): Promise<void> {
 }
 
 async function clearDatabase(): Promise<void> {
-  await pg.raw('DROP SCHEMA public CASCADE');
+  await pg.raw('DROP SCHEMA IF EXISTS public CASCADE');
   await pg.raw('CREATE SCHEMA public');
   await pg.raw('GRANT ALL ON SCHEMA public TO postgres');
   await pg.raw('GRANT ALL ON SCHEMA public TO public');

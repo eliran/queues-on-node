@@ -56,9 +56,10 @@ export interface DistributedQueueBackendAccessor {
    * Claim ownership of jobs that are ready to work on and not currently assigned to any worker or didn't have their ownership refreshed
    * @param workerId worker id to assign ownership to
    * @param maximumJobs maximum jobs to claim ownership
+   * @param staleAfterSeconds optional how many seconds from last update to a job it is assumed stale
    * @returns list of claimed jobs. This method could return jobs that were already claimed before.
    */
-  claimOwnership(workerId: string, maximumJobs: number): Promise<DistributedJob[]>;
+   claimOwnership(workerId: string, maximumJobs: number, staleAfterSeconds?: number): Promise<DistributedJob[]>;
 
   /**
    * Try to refresh ownership of jobs. Needs to be called periodically on jobs that take longer than

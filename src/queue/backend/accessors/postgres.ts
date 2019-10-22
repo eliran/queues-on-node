@@ -1,8 +1,28 @@
 import { DistributedJob, DistributedJobStatus, DistributedQueueBackendAccessor } from '@backend/accessors/index';
 import uuid = require('uuid');
 
+export interface DatabaseAccessorResult {
+  rowCount: number;
+  rows: [unknown];
+}
+
 export interface DatabaseAccessor {
-  execute(query: string, namedArgs: { [key: string]: any }): Promise<unknown>;
+  execute(query: string, namedArgs: { [key: string]: any }): Promise<DatabaseAccessorResult>;
+}
+
+export interface DBPostgresJob {
+  job_id: string;
+  queue_name: string;
+  job_name: string;
+  group_key: string | null;
+  job_context: any;
+  run_after: Date | null;
+  worker_id: string | null;
+  status: DistributedJobStatus;
+  latest_error: any | null;
+  retry_attempts: number;
+  updated_at: Date;
+  created_at: Date;
 }
 
 /**
@@ -12,7 +32,7 @@ export interface DatabaseAccessor {
 export class PostgresDistributedQueueBackendAccessor implements DistributedQueueBackendAccessor {
   constructor(private db: DatabaseAccessor, private tableNamePrefix: string) {}
 
-  private get tableName(): string {
+  public get tableName(): string {
     return `${this.tableNamePrefix}jobs`;
   }
 
@@ -47,19 +67,44 @@ export class PostgresDistributedQueueBackendAccessor implements DistributedQueue
   public async deregisterWorker(workerId: string): Promise<void> {
   }
 
-  public async claimOwnership(workerId: string, maximumJobs: number): Promise<DistributedJob[]> {
-    await this.db.execute(`
-        UPDATE ${this.tableName} SET worker_id=:workerId WHERE workerId IS NULL OR updatedAt >= NOW() - INTERVAL '20 seconds' RETURNING *
+  public async claimOwnership(workerId: string, maximumJobs: number, staleAfterSeconds?: number): Promise<DistributedJob[]> {
+    const result = await this.db.execute(`
+        UPDATE ${this.tableName} SET worker_id=:workerId, updated_at = NOW()
+          WHERE job_id IN (
+            SELECT job_id FROM ${this.tableName}
+              WHERE (worker_id IS NULL OR updated_at <= NOW() - INTERVAL '30 seconds')
+              AND (run_after IS NULL OR run_after <= NOW())
+              FOR UPDATE SKIP LOCKED
+              LIMIT :maximumJobs
+        ) RETURNING *
     `, {
-      worker_id: workerId,
+      workerId,
+      staleInterval: `${staleAfterSeconds || 30} seconds`,
+      maximumJobs,
     });
-    return [];
+    return (result.rows as DBPostgresJob[]).map((row) => ({
+      jobId: row.job_id,
+      queueName: row.queue_name,
+      jobName: row.job_name,
+      groupKey: row.group_key,
+      jobContext: row.job_context,
+      runAfter: row.run_after,
+      workerId: row.worker_id,
+      status: row.status,
+      latestError: row.latest_error,
+      retryAttempts: row.retry_attempts,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    } as DistributedJob));
   }
 
   public async backoffOwnedJob(workerId: string, jobId: string, retryAttempt: number, backoffTimeOffsetInSeconds: number): Promise<void> {
   }
 
   public async deleteJob(workerId: string | null, jobId: string): Promise<void> {
+    await this.db.execute(`
+      DELETE FROM ${this.tableName} WHERE ${workerId ? 'worker_id=:workerId' : 'worker_id IS NULL'} AND job_id=:jobId
+    `, { workerId, jobId });
   }
 
   public async errorOwnedJob<Reason extends {}>(workerId: string, jobId: string, reason: Reason): Promise<void> {
